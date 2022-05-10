@@ -30,6 +30,8 @@ parser.add_argument("--disable_tqdm", action="store_true")
 parser.add_argument("--do_train", action="store_true")
 parser.add_argument("--do_eval", action="store_true")
 parser.add_argument("--resume_from_checkpoint", action="store_true")
+parser.add_argument("--hf_token", type=str, default=None)
+parser.add_argument("model_id")
 
 def main(args):
     model_ckpt = args.model_ckpt#"microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
@@ -49,6 +51,8 @@ def main(args):
     do_train = args.do_train
     do_eval  = args.do_eval
     resume_from_checkpoint = args.resume_from_checkpoint
+    model_id = args.model_id
+    token = args.hf_token
 
     logging.info("Loading dataset")
     # Uncomment to use the dataset builder script with streaming from the raw files
@@ -85,6 +89,12 @@ def main(args):
                                                     mlm_probability=0.15, return_tensors='pt')
 
 
+    # Hub args
+    hub_args = {}
+    if token:
+        hub_args['push_to_hub'] = True
+        hub_args['push_to_hub_model_id'] = model_id
+        hub_args['push_to_hub_token'] = token
 
     # training arguments setting
     # noinspection PyTypeChecker
@@ -108,13 +118,16 @@ def main(args):
                                       save_steps=eval_steps,  # Save after each evaluation
                                       save_total_limit=10,
                                       num_train_epochs=num_epochs,
-                                      bf16=True,
+                                      fp16=True,
                                       gradient_accumulation_steps=gradient_accumulation_steps,
                                       log_level="error",
                                       disable_tqdm=disable_tqdm,
                                       learning_rate=learning_rate,
                                       remove_unused_columns=False,  # Necessary for our custom collation code
+                                      **hub_args
                                       )
+
+
 
 
     print(training_args)
@@ -182,7 +195,9 @@ def main(args):
         metrics = train_result.metrics
         trainer.log_metrics(split="train", metrics=metrics)
         trainer.save_metrics(split="train", metrics=metrics)
-        trainer.save_state()
+        if token:
+            trainer.save_state()
+            trainer.push_to_hub("Finished training")
 
     if training_args.do_eval:
 
@@ -195,8 +210,6 @@ def main(args):
         except OverflowError:
             perplexity = float("inf")
         metrics["perplexity"] = perplexity
-
-        x = 0
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
