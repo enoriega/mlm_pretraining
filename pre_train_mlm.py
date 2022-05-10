@@ -195,9 +195,7 @@ def main(args):
         metrics = train_result.metrics
         trainer.log_metrics(split="train", metrics=metrics)
         trainer.save_metrics(split="train", metrics=metrics)
-        if token:
-            trainer.save_state()
-            trainer.push_to_hub("Finished training")
+
 
     if training_args.do_eval:
 
@@ -213,6 +211,10 @@ def main(args):
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
+    trainer.save_state()
+    if token:
+        trainer.push_to_hub("Finished training")
 
 
 if __name__ == "__main__":
