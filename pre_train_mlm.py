@@ -1,7 +1,7 @@
 import math
 import os
 
-from transformers import AutoTokenizer, EarlyStoppingCallback
+from transformers import AutoTokenizer, EarlyStoppingCallback, DataCollatorForWholeWordMask
 from datasets import load_metric, load_from_disk, IterableDataset, load_dataset, Dataset, DatasetDict
 from transformers import TrainingArguments, Trainer, AutoModelForMaskedLM
 import logging
@@ -31,7 +31,12 @@ parser.add_argument("--do_train", action="store_true")
 parser.add_argument("--do_eval", action="store_true")
 parser.add_argument("--resume_from_checkpoint", action="store_true")
 parser.add_argument("--hf_token", type=str, default=None)
+parser.add_argument("--mlm_type", type=str, default="vanilla")
+parser.add_argument("--mlm_prob", type=float, default=0.15)
+parser.add_argument("--dataset_mode", type=str, default="document")
+parser.add_argument("--max_steps", type=int, default=100_000)
 parser.add_argument("model_id")
+
 
 def main(args):
     model_ckpt = args.model_ckpt#"microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
@@ -43,6 +48,7 @@ def main(args):
     gradient_accumulation_steps = effective_batch_size // batch_size
     logging_steps = args.logging_steps
     dataset_path = args.dataset_path
+    dataset_mode = args.dataset_mode.lower() # "document" or "sentence"
     num_eval_examples = args.num_eval_examples
     evals_per_epoch = args.evals_per_epoch
     learning_rate = args.learning_rate
@@ -53,13 +59,16 @@ def main(args):
     resume_from_checkpoint = args.resume_from_checkpoint
     model_id = args.model_id
     token = args.hf_token
+    mlm_prob = args.mlm_prob
+    mlm_type = args.mlm_type.lower()
+    max_steps = args.max_steps
 
     logging.info("Loading dataset")
     # Uncomment to use the dataset builder script with streaming from the raw files
-    # dataset = load_dataset('enoriega/keyword_pubmed', "sentence", data_dir='/media/evo870/data/keyword_data_files', streaming=True).with_format("torch")
+    dataset = load_dataset('enoriega/keyword_pubmed', dataset_mode, data_dir='/media/evo870/data/keyword_data_files', streaming=True).with_format("torch")
 
     # Uncomment to use the arrow-preprocessed dataset without streaming
-    dataset = load_from_disk(dataset_path)
+    # dataset = load_from_disk(dataset_path)
 
     logging.info("Tokienizing")
     tokenizer = AutoTokenizer.from_pretrained(model_ckpt)
@@ -85,8 +94,12 @@ def main(args):
         eval_steps = 5093504 // effective_batch_size // evals_per_epoch  # We know the dataset is this size when using all keywords
 
 
-    data_collator = DataCollatorForWholeKeywordMask(tokenizer=tokenizer,
-                                                    mlm_probability=0.15, return_tensors='pt')
+    if mlm_type == "vanilla":
+        data_collator = DataCollatorForWholeWordMask(tokenizer=tokenizer,
+                                                     mlm_probability=mlm_prob, return_tensors='pt')
+    else:
+        data_collator = DataCollatorForWholeKeywordMask(tokenizer=tokenizer,
+                                                    mlm_probability=mlm_prob, return_tensors='pt')
 
 
     # Hub args
@@ -105,6 +118,7 @@ def main(args):
                                       per_device_train_batch_size=batch_size,
                                       per_gpu_train_batch_size=batch_size,
                                       per_gpu_eval_batch_size=batch_size,
+                                      max_steps=max_steps,
                                       logging_strategy="steps",
                                       logging_steps=logging_steps,
                                       evaluation_strategy="steps",
