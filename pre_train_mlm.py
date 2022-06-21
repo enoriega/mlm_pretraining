@@ -1,7 +1,8 @@
 import math
 import os
 
-from transformers import AutoTokenizer, EarlyStoppingCallback, DataCollatorForWholeWordMask
+from transformers import AutoTokenizer, EarlyStoppingCallback, DataCollatorForWholeWordMask, \
+    DataCollatorForLanguageModeling
 from datasets import load_metric, load_from_disk, IterableDataset, load_dataset, Dataset, DatasetDict
 from transformers import TrainingArguments, Trainer, AutoModelForMaskedLM
 import logging
@@ -95,7 +96,7 @@ def main(args):
 
 
     if mlm_type == "vanilla":
-        data_collator = DataCollatorForWholeWordMask(tokenizer=tokenizer,
+        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=8,
                                                      mlm_probability=mlm_prob, return_tensors='pt')
     else:
         data_collator = DataCollatorForWholeKeywordMask(tokenizer=tokenizer,
