@@ -54,7 +54,7 @@ from transformers.utils.versions import require_version
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 # check_min_version("4.21.0.dev0")
-# from collators import DataCollatorForLanguageModelingWithKeyword
+from collators import DataCollatorForLanguageModelingWithKeyword
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
@@ -320,6 +320,8 @@ def main():
             # download_mode= "reuse_cache_if_exists"
         )
 
+        raw_datasets['train'] = raw_datasets['train'].filter(lambda e: e['keyword_rank'] < data_args.num_keywords)
+
 
         if data_args.streaming:
             raw_datasets.with_format("torch")
@@ -484,7 +486,7 @@ def main():
                 tokenize_function,
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
-                remove_columns=[text_column_name],
+                remove_columns=[text_column_name, 'pmcid',  'keyword_rank'],
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on dataset line_by_line",
             )
@@ -543,24 +545,24 @@ def main():
         # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
         # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
 
-        with training_args.main_process_first(desc="grouping texts together"):
-            eager_args = {
-                "num_proc": data_args.preprocessing_num_workers,
-                "load_from_cache_file": not data_args.overwrite_cache,
-                "desc": f"Grouping texts in chunks of {max_seq_length}",
-                "batched": True,
-            }
-
-            map_args = {
-
-            }
-
-            if not data_args.streaming:
-                map_args.update(**eager_args)
-            tokenized_datasets = tokenized_datasets.map(
-                group_texts,
-                **map_args
-            )
+        # with training_args.main_process_first(desc="grouping texts together"):
+        #     eager_args = {
+        #         "num_proc": data_args.preprocessing_num_workers,
+        #         "load_from_cache_file": not data_args.overwrite_cache,
+        #         "desc": f"Grouping texts in chunks of {max_seq_length}",
+        #         "batched": True,
+        #     }
+        #
+        #     map_args = {
+        #
+        #     }
+        #
+        #     if not data_args.streaming:
+        #         map_args.update(**eager_args)
+        #     tokenized_datasets = tokenized_datasets.map(
+        #         group_texts,
+        #         **map_args
+        #     )
 
     if training_args.do_train:
         if "train" not in tokenized_datasets:
@@ -601,9 +603,12 @@ def main():
     # Data collator
     # This one will take care of randomly masking the tokens.
     pad_to_multiple_of_8 = data_args.line_by_line and training_args.fp16 and not data_args.pad_to_max_length
-    data_collator = DataCollatorForLanguageModeling(
+
+    data_collator = DataCollatorForLanguageModelingWithKeyword(
         tokenizer=tokenizer,
         mlm_probability=data_args.mlm_probability,
+        mask_keywords  =  model_args.mlm_type == "keyword",
+        keyword_mlm_prob=0.75,
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
     )
 
