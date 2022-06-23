@@ -140,7 +140,7 @@ class DataCollatorForLanguageModelingWithKeyword(DataCollatorForLanguageModeling
         if self.mask_keywords:
             kw_indices_mask = torch.full(labels.shape, False)
             for i, ixs in enumerate(keyword_indices):
-                ixs = [ix for ix in ixs if ix < self.tokenizer.model_max_length]
+                ixs = [ix for ix in ixs if ix < min(self.tokenizer.model_max_length,  512)]
                 kw_indices_mask[i, ixs] = True
 
             probability_matrix.masked_fill_(kw_indices_mask, value=self.keyword_mlm_prob)
